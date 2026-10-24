@@ -464,10 +464,18 @@ export default function App() {
     }
   };
 
-  // Support direct #admin navigation
+  // Support deep-linking from Google Search sitelinks, direct URLs, paths, queries & hashes
   useEffect(() => {
-    const handleHash = () => {
-      if (window.location.hash === '#admin') {
+    const handleUrlRoute = () => {
+      const rawPath = (window.location.pathname || '').toLowerCase().replace(/\/+$/, '');
+      const rawHash = (window.location.hash || '').toLowerCase();
+      const rawSearch = (window.location.search || '').toLowerCase();
+      const fullUrlTarget = `${rawPath} ${rawHash} ${rawSearch}`.trim();
+
+      if (!fullUrlTarget) return;
+
+      // 1. Admin route
+      if (rawHash === '#admin' || rawPath === '/admin') {
         if (isAdminUser) {
           setCurrentPage('admin');
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -478,11 +486,166 @@ export default function App() {
           showToast('Access restricted: Administrator role required');
           window.location.hash = '';
         }
+        return;
+      }
+
+      // 2. Specials / Deals (Google Sitelink: "Specials")
+      if (
+        fullUrlTarget.includes('special') ||
+        fullUrlTarget.includes('deal') ||
+        fullUrlTarget.includes('offer')
+      ) {
+        setCurrentPage('home');
+        setTimeout(() => {
+          const el = document.getElementById('specials');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          } else {
+            window.scrollTo({ top: 750, behavior: 'smooth' });
+          }
+        }, 150);
+        return;
+      }
+
+      // 3. Contact Us (Google Sitelink: "Contact Us")
+      if (
+        fullUrlTarget.includes('contact') ||
+        fullUrlTarget.includes('support') ||
+        fullUrlTarget.includes('help')
+      ) {
+        setActivePolicy('contact');
+        return;
+      }
+
+      // 4. Terms & Conditions (Google Sitelink: "Terms & Conditions")
+      if (
+        fullUrlTarget.includes('term') ||
+        fullUrlTarget.includes('condition')
+      ) {
+        setActivePolicy('terms');
+        return;
+      }
+
+      // 5. Account / Register / Login (Google Sitelinks: "Account", "Register Account")
+      if (
+        fullUrlTarget.includes('register') ||
+        fullUrlTarget.includes('signup') ||
+        fullUrlTarget.includes('login') ||
+        fullUrlTarget.includes('signin') ||
+        fullUrlTarget.includes('account') ||
+        fullUrlTarget.includes('profile')
+      ) {
+        if (authUser) {
+          setIsUserOrdersOpen(true);
+        } else {
+          setIsAuthModalOpen(true);
+        }
+        return;
+      }
+
+      // 6. Privacy Policy
+      if (fullUrlTarget.includes('privacy')) {
+        setActivePolicy('privacy');
+        return;
+      }
+
+      // 7. Shipping Policy
+      if (fullUrlTarget.includes('shipping') || fullUrlTarget.includes('delivery')) {
+        setActivePolicy('shipping');
+        return;
+      }
+
+      // 8. Refund / Replacement Policy
+      if (
+        fullUrlTarget.includes('refund') ||
+        fullUrlTarget.includes('return') ||
+        fullUrlTarget.includes('replacement')
+      ) {
+        setActivePolicy('refund');
+        return;
+      }
+
+      // 9. About Us
+      if (fullUrlTarget.includes('about')) {
+        setActivePolicy('about');
+        return;
+      }
+
+      // 10. Grievance
+      if (fullUrlTarget.includes('grievance')) {
+        setActivePolicy('grievance');
+        return;
+      }
+
+      // 11. Orders & Tracking
+      if (fullUrlTarget.includes('order') || fullUrlTarget.includes('track')) {
+        if (authUser) {
+          setIsUserOrdersOpen(true);
+        } else {
+          setIsAuthModalOpen(true);
+        }
+        return;
+      }
+
+      // 12. Cart & Wishlist
+      if (fullUrlTarget.includes('cart') || fullUrlTarget.includes('checkout')) {
+        setIsCartOpen(true);
+        return;
+      }
+      if (fullUrlTarget.includes('wishlist')) {
+        setIsWishlistOpen(true);
+        return;
+      }
+
+      // 13. Trade-in / Sell Consoles
+      if (fullUrlTarget.includes('sell') || fullUrlTarget.includes('trade')) {
+        setCurrentPage('sell-consoles');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      // 14. Repair Console
+      if (fullUrlTarget.includes('repair')) {
+        setCurrentPage('repair-console');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      // 15. Category routes
+      if (
+        fullUrlTarget.includes('console') ||
+        fullUrlTarget.includes('ps5') ||
+        fullUrlTarget.includes('ps4') ||
+        fullUrlTarget.includes('xbox')
+      ) {
+        setCurrentPage('consoles');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (fullUrlTarget.includes('controller') || fullUrlTarget.includes('dualsense')) {
+        setCurrentPage('controllers');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (fullUrlTarget.includes('game') || fullUrlTarget.includes('disc')) {
+        setCurrentPage('preowned_games');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (fullUrlTarget.includes('accessor')) {
+        setCurrentPage('accessories');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
       }
     };
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
+
+    handleUrlRoute();
+    window.addEventListener('hashchange', handleUrlRoute);
+    window.addEventListener('popstate', handleUrlRoute);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlRoute);
+      window.removeEventListener('popstate', handleUrlRoute);
+    };
   }, [isAdminUser, authUser]);
 
   // Route security guard: bounce non-admins out of admin page
@@ -1081,6 +1244,7 @@ export default function App() {
 
             {/* SECTION 3: Special Deals (Horizontal Carousel) */}
             <ProductSectionCarousel
+              id="specials"
               title="Special Deals"
               subtitle="Discounted games, pre-owned consoles, and accessories"
               badgeText="Limited Offers"

@@ -20,6 +20,7 @@ interface ProductSectionCarouselProps {
   maxDisplay?: number;
   containerBgClass?: string;
   borderClass?: string;
+  id?: string;
 }
 
 export const ProductSectionCarousel: React.FC<ProductSectionCarouselProps> = ({
@@ -39,6 +40,7 @@ export const ProductSectionCarousel: React.FC<ProductSectionCarouselProps> = ({
   maxDisplay = 18,
   containerBgClass = 'bg-white dark:bg-[#0b0f17]',
   borderClass = 'border-b border-[#e5e7eb] dark:border-[#1e293b]',
+  id,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -153,7 +155,7 @@ export const ProductSectionCarousel: React.FC<ProductSectionCarouselProps> = ({
   }
 
   return (
-    <section className={`w-full py-10 sm:py-14 ${containerBgClass} transition-colors duration-200`}>
+    <section id={id} className={`w-full py-10 sm:py-14 ${containerBgClass} transition-colors duration-200`}>
       <div className="w-full max-w-[1720px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12">
         
         {/* Section Header */}
