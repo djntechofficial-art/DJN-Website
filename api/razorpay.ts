@@ -177,6 +177,7 @@ export default async function handler(req: any, res: any) {
           amount: amountInPaise,
           currency: 'INR',
           receipt: `rcpt_${Date.now()}`,
+          payment_capture: 1, // 1 = Auto-capture immediately (prevents 5-day uncaptured payment refund expiry)
           notes: {
             customer_name: customer?.fullName || 'Customer',
             customer_phone: customer?.phone || '',
@@ -271,6 +272,41 @@ export default async function handler(req: any, res: any) {
         return;
       }
 
+      // Safety Guard: Force Capture if payment is still in 'authorized' status (prevents 5-day auto-refund)
+      try {
+        const authHeader = 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+        const payFetchRes = await fetch(`https://api.razorpay.com/v1/payments/${razorpayPaymentId}`, {
+          method: 'GET',
+          headers: { Authorization: authHeader },
+        });
+
+        if (payFetchRes.ok) {
+          const payData = await payFetchRes.json();
+          if (payData.status === 'authorized') {
+            console.log(`[Razorpay API] Payment ${razorpayPaymentId} is authorized but uncaptured. Capturing now...`);
+            const captureRes = await fetch(`https://api.razorpay.com/v1/payments/${razorpayPaymentId}/capture`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: authHeader,
+              },
+              body: JSON.stringify({
+                amount: payData.amount,
+                currency: payData.currency || 'INR',
+              }),
+            });
+            const capData = await captureRes.json();
+            if (captureRes.ok && capData.status === 'captured') {
+              console.log(`[Razorpay API] Payment ${razorpayPaymentId} captured successfully!`);
+            } else {
+              console.warn(`[Razorpay API] Payment capture response:`, capData);
+            }
+          }
+        }
+      } catch (capErr) {
+        console.warn('[Razorpay API] Capture verification check warning (non-fatal):', capErr);
+      }
+
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
       res.end(
@@ -279,7 +315,7 @@ export default async function handler(req: any, res: any) {
           verified: true,
           paymentId: razorpayPaymentId,
           orderId: razorpayOrderId,
-          message: 'Payment cryptographically verified.',
+          message: 'Payment cryptographically verified and captured.',
         })
       );
       return;

@@ -15,7 +15,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   promoDiscountPercent: 10,
   freeShippingThreshold: 1000,
   standardShippingFee: 99,
-  razorpayKeyId: 'rzp_test_1DP5mmOlF5G5ag',
+  razorpayKeyId: 'rzp_live_TpRIohlYKoheVz',
   razorpayEnabled: true,
   maintenanceMode: false,
   maintenanceHeadline: 'Upgrading the Gaming Experience',

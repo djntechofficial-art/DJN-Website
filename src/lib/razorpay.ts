@@ -29,6 +29,19 @@ export interface VerifyPaymentResponse {
   error?: string;
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 /**
  * Creates a cryptographically locked Razorpay Order from the backend.
  * The backend calculates the authentic price from the database to prevent client-side price tampering.
@@ -52,13 +65,13 @@ export async function createBackendRazorpayOrder(params: CreateOrderParams): Pro
     },
   };
 
-  // 1. Try local or hosted serverless endpoint (/api/razorpay)
+  // 1. Try local or hosted serverless endpoint (/api/razorpay) with 8s timeout
   try {
-    const res = await fetch('/api/razorpay', {
+    const res = await fetchWithTimeout('/api/razorpay', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    });
+    }, 8000);
 
     if (res.ok) {
       const data = await res.json();
@@ -70,7 +83,7 @@ export async function createBackendRazorpayOrder(params: CreateOrderParams): Pro
       }
     }
   } catch (err) {
-    // Continue to Supabase Edge Function fallback
+    // Continue to Supabase Edge Function fallback on slow network or error
   }
 
   // 2. Try Supabase Edge Function fallback
@@ -106,13 +119,13 @@ export async function verifyBackendRazorpayPayment(params: VerifyPaymentParams):
     razorpaySignature: params.razorpaySignature,
   };
 
-  // 1. Try local or hosted serverless endpoint (/api/razorpay)
+  // 1. Try local or hosted serverless endpoint (/api/razorpay) with 10s timeout
   try {
-    const res = await fetch('/api/razorpay', {
+    const res = await fetchWithTimeout('/api/razorpay', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    });
+    }, 10000);
 
     if (res.ok) {
       const data = await res.json();

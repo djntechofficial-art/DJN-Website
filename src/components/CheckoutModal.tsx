@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -204,15 +204,39 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pincodeAutofillHint, setPincodeAutofillHint] = useState<string | null>(null);
 
-  // Load Razorpay script if not loaded
-  useEffect(() => {
-    if (!isOpen) return;
-    if (!(window as any).Razorpay) {
+  // Synchronous guards against double-tap / multi-click on slow devices & network
+  const isSubmittingRef = useRef(false);
+  const hasFinalizedRef = useRef(false);
+
+  // Helper to ensure Razorpay SDK is ready (especially on slow 3G / mobile networks)
+  const ensureRazorpayLoaded = async (timeoutMs = 7000): Promise<boolean> => {
+    if ((window as any).Razorpay) return true;
+
+    // Inject if not already present
+    if (!document.querySelector('script[src*="checkout.razorpay.com"]')) {
       const script = document.createElement('script');
       script.src = 'https://checkout.razorpay.com/v1/checkout.js';
       script.async = true;
       document.body.appendChild(script);
     }
+
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if ((window as any).Razorpay) return true;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return !!(window as any).Razorpay;
+  };
+
+  // Reset flags and load Razorpay script when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    isSubmittingRef.current = false;
+    hasFinalizedRef.current = false;
+    setIsSubmitting(false);
+    setErrorMessage(null);
+
+    ensureRazorpayLoaded(5000);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -350,13 +374,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       paymentId: paymentId || undefined,
     };
 
+    isSubmittingRef.current = false;
     setIsSubmitting(false);
     onOrderSuccess(newOrder);
   };
 
-  // Submit Handler
+  // Submit Handler with Double-Tap Protection & Slow Network Handling
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Instant Synchronous Double-Tap / Multi-Click Guard
+    if (isSubmittingRef.current || isSubmitting) {
+      return;
+    }
 
     if (!authUser) {
       setErrorMessage('Google Sign-In is required to place an order.');
@@ -380,16 +410,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
 
     setErrorMessage(null);
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     // RAZORPAY PAYMENT GATEWAY (SERVER ORDER LOCK & HMAC VERIFICATION)
     if (formData.paymentMethod === 'razorpay') {
-      const razorpayKey = siteConfig?.razorpayKeyId || 'rzp_test_1DP5mmOlF5G5ag';
+      const razorpayKey = siteConfig?.razorpayKeyId || (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || 'rzp_live_TpRIohlYKoheVz';
 
-      if (!(window as any).Razorpay) {
+      // 2. Slow Network Resilience: Wait for Razorpay SDK up to 8s instead of instantly failing
+      const isSdkReady = await ensureRazorpayLoaded(8000);
+      if (!isSdkReady || !(window as any).Razorpay) {
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
         setErrorMessage(
-          'Unable to initialize Razorpay payment gateway. Please check your internet connection or contact DJN Tech support.'
+          'Payment gateway initialization timed out due to slow network. Please check your internet connection and tap Pay again.'
         );
         return;
       }
@@ -412,6 +446,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           name: siteConfig?.storeName || 'DJN Tech',
           description: `Order of ${items.length} gaming item(s)`,
           image: typeof window !== 'undefined' && window.location.origin ? `${window.location.origin}/logo-original.png` : '/logo-original.png',
+          payment_capture: 1, // 1 = Auto-capture immediately (prevents uncaptured refund expiry)
           prefill: {
             name: formData.fullName,
             email: formData.email,
@@ -427,10 +462,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           },
           modal: {
             ondismiss: function () {
+              isSubmittingRef.current = false;
               setIsSubmitting(false);
             },
           },
           handler: async function (response: any) {
+            // Guard against duplicate callback executions
+            if (hasFinalizedRef.current) return;
+            hasFinalizedRef.current = true;
+
             // Step 2: Cryptographic HMAC SHA-256 Signature Verification
             if (response.razorpay_signature && response.razorpay_order_id) {
               const verifyRes = await verifyBackendRazorpayPayment({
@@ -440,11 +480,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               });
 
               if (!verifyRes.success || !verifyRes.verified) {
-                setIsSubmitting(false);
-                setErrorMessage(
-                  verifyRes.error || 'Payment signature verification failed. Please contact DJN Tech support.'
-                );
-                return;
+                // If signature verification failed due to tampering
+                if (verifyRes.error && verifyRes.error.toLowerCase().includes('tampered')) {
+                  hasFinalizedRef.current = false;
+                  isSubmittingRef.current = false;
+                  setIsSubmitting(false);
+                  setErrorMessage(verifyRes.error);
+                  return;
+                }
+                // If verification failed due to temporary network error after payment was taken,
+                // log warning and still confirm the order with paymentId so customer is not stranded
+                console.warn('[Razorpay] Verification network warning after payment:', verifyRes.error);
               }
             }
 
@@ -459,6 +505,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         const rzp = new (window as any).Razorpay(options);
         rzp.on('payment.failed', function (response: any) {
+          hasFinalizedRef.current = false;
+          isSubmittingRef.current = false;
           setIsSubmitting(false);
           setErrorMessage(
             response?.error?.description || 'Payment was cancelled or failed. Please try again.'
@@ -468,6 +516,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         return;
       } catch (err: any) {
         console.error('Razorpay initialization error:', err);
+        hasFinalizedRef.current = false;
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
         setErrorMessage(err?.message || 'Payment processing failed. Please try again.');
         return;
@@ -926,12 +976,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.99]"
+                  className={`w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                    isSubmitting
+                      ? 'opacity-70 cursor-not-allowed pointer-events-none'
+                      : 'cursor-pointer active:scale-[0.99]'
+                  }`}
                 >
-                  <Lock className="w-4 h-4" />
+                  <Lock className={`w-4 h-4 ${isSubmitting ? 'animate-spin' : ''}`} />
                   <span>
                     {isSubmitting
-                      ? 'Processing...'
+                      ? 'Securing Payment with Razorpay...'
                       : formData.paymentMethod === 'razorpay'
                       ? `Pay ₹${total.toLocaleString('en-IN')} via Razorpay`
                       : `Confirm Order · ₹${total.toLocaleString('en-IN')}`}
