@@ -165,7 +165,7 @@ export const ProductSectionCarousel: React.FC<ProductSectionCarouselProps> = ({
                 {badgeText}
               </span>
             </div>
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#111827] dark:text-white tracking-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[#111827] dark:text-white tracking-[-0.5px] leading-tight">
               {title}
             </h2>
             <p className="hidden sm:block text-xs text-[#6b7280] dark:text-gray-400 mt-0.5">

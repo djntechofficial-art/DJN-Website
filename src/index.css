@@ -25,12 +25,15 @@
   }
 
   body {
-    font-family: 'Instrument Sans', Arial, sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: #212121;
     background-color: #ffffff;
     transition: background-color 0.25s ease, color 0.25s ease;
     overflow-x: hidden;
     width: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   .dark body {
@@ -38,14 +41,27 @@
     color: #f3f4f6;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Instrument Sans', Arial, sans-serif;
+  h1, h2, .font-display, .font-heading {
+    font-family: 'Sofia Sans Condensed', '__Sofia_Sans_Condensed_bb411f', '__Sofia_Sans_Condensed_Fallback_bb411f', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.01em;
   }
 }
 
 /* Custom Typography Utilities */
-.font-sofia-condensed {
+.font-sofia-condensed,
+.font-display,
+.font-heading {
   font-family: 'Sofia Sans Condensed', '__Sofia_Sans_Condensed_bb411f', '__Sofia_Sans_Condensed_Fallback_bb411f', sans-serif;
+}
+
+.font-sans,
+.font-body {
+  font-family: 'Plus Jakarta Sans', 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* Custom scrollbars for clean UI */
