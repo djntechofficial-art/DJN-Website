@@ -32,9 +32,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     >
       
       {/* Visual Product Image Container */}
-      <div 
-        onClick={() => onSelect(product)} 
-        className="relative cursor-pointer overflow-hidden bg-[#f9fafb] dark:bg-[#161f30]"
+      <a 
+        href={`/product/${product.id}`}
+        onClick={(e) => {
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            onSelect(product);
+          }
+        }} 
+        className="relative block cursor-pointer overflow-hidden bg-[#f9fafb] dark:bg-[#161f30]"
       >
         <ProductVisualizer product={product} size="md" />
 
@@ -87,7 +93,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
           </button>
         </div>
-      </div>
+      </a>
 
       {/* Product Information Body */}
       <div 
@@ -103,9 +109,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
 
           {/* Product Name */}
-          <h3 className="text-xs sm:text-sm font-medium text-[#111827] dark:text-gray-100 group-hover:text-[#2563eb] dark:group-hover:text-[#60a5fa] transition-colors line-clamp-2 min-h-[38px] leading-snug">
+          <a
+            href={`/product/${product.id}`}
+            onClick={(e) => {
+              if (!e.metaKey && !e.ctrlKey) {
+                e.preventDefault();
+                onSelect(product);
+              }
+            }}
+            className="text-xs sm:text-sm font-medium text-[#111827] dark:text-gray-100 group-hover:text-[#2563eb] dark:group-hover:text-[#60a5fa] transition-colors line-clamp-2 min-h-[38px] leading-snug block"
+          >
             {product.name}
-          </h3>
+          </a>
         </div>
 
         {/* Pricing Row */}

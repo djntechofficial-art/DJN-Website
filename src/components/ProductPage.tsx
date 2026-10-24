@@ -55,10 +55,21 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   const [pincodeChecked, setPincodeChecked] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Scroll to top on product change
+  // Scroll to top on product change & update browser URL + tab title (Flipkart / Amazon style)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [product.id]);
+    const originalTitle = document.title;
+    document.title = `${product.name} | DJN Tech Online Store`;
+
+    const targetUrl = `/product/${product.id}`;
+    if (typeof window !== 'undefined' && window.location.pathname !== targetUrl) {
+      window.history.replaceState({ type: 'product', id: product.id }, '', targetUrl);
+    }
+
+    return () => {
+      document.title = originalTitle;
+    };
+  }, [product.id, product.name]);
 
   // Recommended products (same category or platform, excluding current product)
   const similarProducts = allProducts
@@ -71,8 +82,29 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     .slice(0, 4);
 
   const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://djntech.net';
+    const shareUrl = `${origin}/product/${product.id}`;
+
+    if (navigator.share) {
+      navigator
+        .share({
+          title: `${product.name} · DJN Tech`,
+          text: `Check out ${product.name} on DJN Tech!`,
+          url: shareUrl,
+        })
+        .then(() => {
+          setCopiedLink(true);
+          setTimeout(() => setCopiedLink(false), 2000);
+        })
+        .catch(() => {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(shareUrl);
+            setCopiedLink(true);
+            setTimeout(() => setCopiedLink(false), 2000);
+          }
+        });
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     }

@@ -46,6 +46,159 @@ import {
 } from './lib/supabase';
 import { Check } from 'lucide-react';
 
+export interface ResolvedRoute {
+  page: 'home' | 'all' | Category | 'sell-consoles' | 'repair-console' | 'product-detail' | 'admin';
+  category: Category | 'all';
+  platform: Platform | 'all';
+  product: Product | null;
+  policy: PolicyType | null;
+}
+
+export function resolveRouteFromUrl(availableProducts: Product[]): ResolvedRoute {
+  if (typeof window === 'undefined') {
+    return {
+      page: 'home',
+      category: 'all',
+      platform: 'all',
+      product: null,
+      policy: null,
+    };
+  }
+
+  const pathname = window.location.pathname || '';
+  const search = window.location.search || '';
+  const hash = window.location.hash || '';
+
+  const rawPath = pathname.toLowerCase().replace(/\/+$/, '');
+  const rawHash = hash.toLowerCase();
+  const searchParams = new URLSearchParams(search);
+
+  // 1. PRODUCT ROUTE CHECK (Top Priority - Flipkart / Amazon style)
+  let targetProductId: string | null = null;
+
+  // Path format: /product/:id or /p/:id or /item/:id
+  const productPathMatch = rawPath.match(/^\/(?:product|p|item)\/([^/?#]+)/i);
+  if (productPathMatch && productPathMatch[1]) {
+    targetProductId = decodeURIComponent(productPathMatch[1]).trim();
+  }
+
+  // Query parameter format: ?product=:id or ?product_id=:id or ?p=:id or ?id=:id
+  if (!targetProductId) {
+    const q = searchParams.get('product') || searchParams.get('product_id') || searchParams.get('p') || searchParams.get('id');
+    if (q) targetProductId = q.trim();
+  }
+
+  // Hash format: #product/:id or #product-:id or #p/:id
+  if (!targetProductId && rawHash) {
+    const hashMatch = rawHash.match(/^#(?:product|p)[/-]([^/?#]+)/i);
+    if (hashMatch && hashMatch[1]) {
+      targetProductId = decodeURIComponent(hashMatch[1]).trim();
+    }
+  }
+
+  // Direct product slug in pathname (e.g. /ps5-slim-disc or /dualsense-white)
+  if (!targetProductId && rawPath && rawPath !== '/' && !rawPath.includes('/')) {
+    const candidateSlug = rawPath.replace(/^\//, '').trim();
+    const systemRoutes = [
+      'admin', 'cart', 'wishlist', 'orders', 'my-orders', 'sell', 'sell-consoles',
+      'repair', 'repair-console', 'specials', 'deals', 'terms', 'privacy',
+      'shipping', 'refund', 'contact', 'about', 'grievance', 'consoles',
+      'controllers', 'games', 'preowned_games', 'preowned-games', 'accessories',
+      'shop', 'all', 'store', 'catalog'
+    ];
+    if (!systemRoutes.includes(candidateSlug)) {
+      targetProductId = candidateSlug;
+    }
+  }
+
+  if (targetProductId) {
+    const targetClean = targetProductId.toLowerCase();
+    const pool = availableProducts && availableProducts.length > 0 ? availableProducts : PRODUCTS;
+    const matched = pool.find((p) => {
+      if (!p) return false;
+      if (p.id.toLowerCase() === targetClean) return true;
+      const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if (slug === targetClean) return true;
+      if (targetClean.length >= 4 && p.id.toLowerCase().includes(targetClean)) return true;
+      return false;
+    });
+
+    if (matched) {
+      return {
+        page: 'product-detail',
+        category: matched.category,
+        platform: matched.platform || 'all',
+        product: matched,
+        policy: null,
+      };
+    }
+  }
+
+  // 2. CATEGORY ROUTES (/category/:cat, /consoles, /controllers, /games, /accessories, /shop)
+  const catMatch = rawPath.match(/^\/(?:category|c)\/([^/?#]+)/i);
+  const catSlug = (catMatch && catMatch[1] ? catMatch[1] : rawPath.replace(/^\//, '')).toLowerCase();
+
+  if (catSlug === 'consoles' || rawHash === '#consoles') {
+    return { page: 'consoles', category: 'consoles', platform: 'all', product: null, policy: null };
+  }
+  if (catSlug === 'controllers' || rawHash === '#controllers') {
+    return { page: 'controllers', category: 'controllers', platform: 'all', product: null, policy: null };
+  }
+  if (catSlug === 'games' || catSlug === 'preowned_games' || catSlug === 'preowned-games' || rawHash === '#games') {
+    return { page: 'preowned_games', category: 'preowned_games', platform: 'all', product: null, policy: null };
+  }
+  if (catSlug === 'accessories' || rawHash === '#accessories') {
+    return { page: 'accessories', category: 'accessories', platform: 'all', product: null, policy: null };
+  }
+  if (catSlug === 'shop' || catSlug === 'all' || catSlug === 'catalog') {
+    return { page: 'all', category: 'all', platform: 'all', product: null, policy: null };
+  }
+
+  // 3. SERVICES / PORTALS (/sell-consoles, /repair-console)
+  if (rawPath === '/sell-consoles' || rawPath === '/sell' || rawPath === '/trade-in' || rawHash === '#sell-consoles') {
+    return { page: 'sell-consoles', category: 'all', platform: 'all', product: null, policy: null };
+  }
+  if (rawPath === '/repair-console' || rawPath === '/repair' || rawHash === '#repair-console') {
+    return { page: 'repair-console', category: 'all', platform: 'all', product: null, policy: null };
+  }
+
+  // 4. ADMIN
+  if (rawPath === '/admin' || rawHash === '#admin') {
+    return { page: 'admin', category: 'all', platform: 'all', product: null, policy: null };
+  }
+
+  // 5. POLICIES & INFORMATION MODALS
+  if (rawPath === '/terms' || rawPath === '/terms-and-conditions' || rawHash === '#terms') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'terms' };
+  }
+  if (rawPath === '/privacy' || rawPath === '/privacy-policy' || rawHash === '#privacy') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'privacy' };
+  }
+  if (rawPath === '/shipping' || rawPath === '/shipping-policy' || rawHash === '#shipping') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'shipping' };
+  }
+  if (rawPath === '/refund' || rawPath === '/refund-policy' || rawHash === '#refund') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'refund' };
+  }
+  if (rawPath === '/contact' || rawPath === '/contact-us' || rawHash === '#contact') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'contact' };
+  }
+  if (rawPath === '/about' || rawPath === '/about-us' || rawHash === '#about') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'about' };
+  }
+  if (rawPath === '/grievance' || rawHash === '#grievance') {
+    return { page: 'home', category: 'all', platform: 'all', product: null, policy: 'grievance' };
+  }
+
+  return {
+    page: 'home',
+    category: 'all',
+    platform: 'all',
+    product: null,
+    policy: null,
+  };
+}
+
 export default function App() {
   const [products, setProducts] = useState<Product[]>(() => {
     try {
@@ -106,7 +259,19 @@ export default function App() {
               stockCount: 999,
             }));
             const hasTest = guaranteed.some((p) => p.id === TEST_PRODUCT.id || p.price === 1);
-            setProducts(hasTest ? guaranteed : [TEST_PRODUCT, ...guaranteed]);
+            const finalProducts = hasTest ? guaranteed : [TEST_PRODUCT, ...guaranteed];
+            setProducts(finalProducts);
+
+            // If visitor landed on a product URL that wasn't in local storage, resolve it from Supabase
+            if (!selectedProduct && typeof window !== 'undefined') {
+              const route = resolveRouteFromUrl(finalProducts);
+              if (route.page === 'product-detail' && route.product) {
+                setSelectedProduct(route.product);
+                setCurrentPage('product-detail');
+                setActiveCategory(route.category);
+                document.title = `${route.product.name} | DJN Tech Online Store`;
+              }
+            }
           }
           if (dbConfig) {
             setSiteConfig(dbConfig);
@@ -148,15 +313,18 @@ export default function App() {
   // Brand Splash Preloader State
   const [isSiteLoading, setIsSiteLoading] = useState(true);
 
+  // Synchronous URL Route Resolver (Flipkart / Amazon style direct deep linking)
+  const initialRoute = useMemo(() => resolveRouteFromUrl(products), []);
+
   // Multi-page Routing State
-  const [currentPage, setCurrentPage] = useState<'home' | 'all' | Category | 'sell-consoles' | 'repair-console' | 'product-detail' | 'admin'>('home');
-  const [activeCategory, setActiveCategory] = useState<Category | 'all'>('all');
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform | 'all'>('all');
+  const [currentPage, setCurrentPage] = useState<'home' | 'all' | Category | 'sell-consoles' | 'repair-console' | 'product-detail' | 'admin'>(() => initialRoute.page);
+  const [activeCategory, setActiveCategory] = useState<Category | 'all'>(() => initialRoute.category);
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform | 'all'>(() => initialRoute.platform);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals & Drawers
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [activePolicy, setActivePolicy] = useState<PolicyType | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => initialRoute.product);
+  const [activePolicy, setActivePolicy] = useState<PolicyType | null>(() => initialRoute.policy);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -425,12 +593,18 @@ export default function App() {
     }, 2500);
   };
 
-  // Navigation Handlers
+  // Navigation Handlers with HTML5 History API (Flipkart / Amazon style URL sync)
   const handleNavigateHome = () => {
     setSelectedProduct(null);
     setCurrentPage('home');
     setActiveCategory('all');
     setSelectedPlatform('all');
+    if (window.location.pathname !== '/' || window.location.search || window.location.hash) {
+      window.history.pushState({ type: 'home' }, '', '/');
+    }
+    document.title = siteConfig.brandName
+      ? `${siteConfig.brandName} - Consoles, Controllers & Pre-Owned Games`
+      : 'DJN Tech - Consoles, Controllers & Pre-Owned Games';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -439,6 +613,10 @@ export default function App() {
     setCurrentPage('sell-consoles');
     setActiveCategory('all');
     setSelectedPlatform('all');
+    if (window.location.pathname !== '/sell-consoles') {
+      window.history.pushState({ type: 'sell' }, '', '/sell-consoles');
+    }
+    document.title = 'Sell Your Gaming Consoles | Instant Cash · DJN Tech';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -447,14 +625,50 @@ export default function App() {
     setCurrentPage('repair-console');
     setActiveCategory('all');
     setSelectedPlatform('all');
+    if (window.location.pathname !== '/repair-console') {
+      window.history.pushState({ type: 'repair' }, '', '/repair-console');
+    }
+    document.title = 'Console Repair & Maintenance Service · DJN Tech';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNavigateCategory = (cat: Category | 'all', plat: Platform | 'all' = 'all') => {
+    setSelectedProduct(null);
+    setCurrentPage(cat);
+    setActiveCategory(cat);
+    setSelectedPlatform(plat);
+    const catSlug = cat === 'all' ? '/shop' : `/category/${cat}`;
+    if (window.location.pathname !== catSlug) {
+      window.history.pushState({ type: 'category', category: cat, platform: plat }, '', catSlug);
+    }
+    const catLabel = cat === 'all' ? 'All Gaming Catalog' : cat.replace('_', ' ').toUpperCase();
+    document.title = `${catLabel} | DJN Tech Online Store`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSelectProduct = (product: Product) => {
+    if (isTestProduct(product) && !isAdminUser) {
+      showToast('This item is a private test product accessible only to store administrators.');
+      return;
+    }
+    setSelectedProduct(product);
+    setCurrentPage('product-detail');
+    const targetUrl = `/product/${product.id}`;
+    if (window.location.pathname !== targetUrl) {
+      window.history.pushState({ type: 'product', id: product.id }, '', targetUrl);
+    }
+    document.title = `${product.name} | DJN Tech Online Store`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Admin Access Handlers
   const handleOpenAdmin = () => {
     if (isAdminUser) {
-      setCurrentPage('admin');
       setSelectedProduct(null);
+      setCurrentPage('admin');
+      if (window.location.pathname !== '/admin') {
+        window.history.pushState({ type: 'admin' }, '', '/admin');
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (!authUser) {
       setIsAuthModalOpen(true);
@@ -464,37 +678,34 @@ export default function App() {
     }
   };
 
-  // Support deep-linking from Google Search sitelinks, direct URLs, paths, queries & hashes
+  // Support deep-linking from shared product URLs, sitelinks, direct links, and browser back/forward buttons
   useEffect(() => {
     const handleUrlRoute = () => {
-      const rawPath = (window.location.pathname || '').toLowerCase().replace(/\/+$/, '');
-      const rawHash = (window.location.hash || '').toLowerCase();
-      const rawSearch = (window.location.search || '').toLowerCase();
-      const fullUrlTarget = `${rawPath} ${rawHash} ${rawSearch}`.trim();
+      const route = resolveRouteFromUrl(products.length > 0 ? products : PRODUCTS);
 
-      if (!fullUrlTarget) return;
-
-      // 1. Admin route
-      if (rawHash === '#admin' || rawPath === '/admin') {
-        if (isAdminUser) {
-          setCurrentPage('admin');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else if (!authUser) {
-          setIsAuthModalOpen(true);
-          showToast('Please sign in with your authorized Google Account');
-        } else {
-          showToast('Access restricted: Administrator role required');
-          window.location.hash = '';
+      // 1. DEDICATED PRODUCT ROUTE (Flipkart / Amazon Style)
+      if (route.page === 'product-detail' && route.product) {
+        if (isTestProduct(route.product) && !isAdminUser) {
+          showToast('Access restricted: Private test product requires administrator sign-in');
+          setCurrentPage('home');
+          setSelectedProduct(null);
+          return;
         }
+        setSelectedProduct(route.product);
+        setCurrentPage('product-detail');
+        setActiveCategory(route.category);
+        document.title = `${route.product.name} | DJN Tech Online Store`;
         return;
       }
 
-      // 2. Specials / Deals (Google Sitelink: "Specials")
+      // 2. SPECIALS / DEALS (Sitelink: "Specials")
+      const fullUrlTarget = `${window.location.pathname} ${window.location.hash} ${window.location.search}`.toLowerCase();
       if (
         fullUrlTarget.includes('special') ||
         fullUrlTarget.includes('deal') ||
         fullUrlTarget.includes('offer')
       ) {
+        setSelectedProduct(null);
         setCurrentPage('home');
         setTimeout(() => {
           const el = document.getElementById('specials');
@@ -507,77 +718,36 @@ export default function App() {
         return;
       }
 
-      // 3. Contact Us (Google Sitelink: "Contact Us")
-      if (
-        fullUrlTarget.includes('contact') ||
-        fullUrlTarget.includes('support') ||
-        fullUrlTarget.includes('help')
-      ) {
-        setActivePolicy('contact');
-        return;
-      }
-
-      // 4. Terms & Conditions (Google Sitelink: "Terms & Conditions")
-      if (
-        fullUrlTarget.includes('term') ||
-        fullUrlTarget.includes('condition')
-      ) {
-        setActivePolicy('terms');
-        return;
-      }
-
-      // 5. Account / Register / Login (Google Sitelinks: "Account", "Register Account")
-      if (
-        fullUrlTarget.includes('register') ||
-        fullUrlTarget.includes('signup') ||
-        fullUrlTarget.includes('login') ||
-        fullUrlTarget.includes('signin') ||
-        fullUrlTarget.includes('account') ||
-        fullUrlTarget.includes('profile')
-      ) {
-        if (authUser) {
-          setIsUserOrdersOpen(true);
-        } else {
+      // 3. ADMIN ROUTE
+      if (route.page === 'admin') {
+        if (isAdminUser) {
+          setSelectedProduct(null);
+          setCurrentPage('admin');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (!authUser) {
           setIsAuthModalOpen(true);
+          showToast('Please sign in with your authorized Google Account');
+        } else {
+          showToast('Access restricted: Administrator role required');
         }
         return;
       }
 
-      // 6. Privacy Policy
-      if (fullUrlTarget.includes('privacy')) {
-        setActivePolicy('privacy');
+      // 4. POLICIES & INFO MODALS
+      if (route.policy) {
+        setActivePolicy(route.policy);
         return;
       }
 
-      // 7. Shipping Policy
-      if (fullUrlTarget.includes('shipping') || fullUrlTarget.includes('delivery')) {
-        setActivePolicy('shipping');
+      // 5. DRAWERS & MODALS (Cart, Wishlist, User Orders)
+      if (fullUrlTarget.includes('cart') || fullUrlTarget.includes('checkout')) {
+        setIsCartOpen(true);
         return;
       }
-
-      // 8. Refund / Replacement Policy
-      if (
-        fullUrlTarget.includes('refund') ||
-        fullUrlTarget.includes('return') ||
-        fullUrlTarget.includes('replacement')
-      ) {
-        setActivePolicy('refund');
+      if (fullUrlTarget.includes('wishlist')) {
+        setIsWishlistOpen(true);
         return;
       }
-
-      // 9. About Us
-      if (fullUrlTarget.includes('about')) {
-        setActivePolicy('about');
-        return;
-      }
-
-      // 10. Grievance
-      if (fullUrlTarget.includes('grievance')) {
-        setActivePolicy('grievance');
-        return;
-      }
-
-      // 11. Orders & Tracking
       if (fullUrlTarget.includes('order') || fullUrlTarget.includes('track')) {
         if (authUser) {
           setIsUserOrdersOpen(true);
@@ -587,55 +757,16 @@ export default function App() {
         return;
       }
 
-      // 12. Cart & Wishlist
-      if (fullUrlTarget.includes('cart') || fullUrlTarget.includes('checkout')) {
-        setIsCartOpen(true);
-        return;
-      }
-      if (fullUrlTarget.includes('wishlist')) {
-        setIsWishlistOpen(true);
-        return;
-      }
+      // 6. CATEGORY, PORTALS, AND HOME
+      setSelectedProduct(null);
+      setCurrentPage(route.page);
+      setActiveCategory(route.category);
+      setSelectedPlatform(route.platform);
 
-      // 13. Trade-in / Sell Consoles
-      if (fullUrlTarget.includes('sell') || fullUrlTarget.includes('trade')) {
-        setCurrentPage('sell-consoles');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-
-      // 14. Repair Console
-      if (fullUrlTarget.includes('repair')) {
-        setCurrentPage('repair-console');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-
-      // 15. Category routes
-      if (
-        fullUrlTarget.includes('console') ||
-        fullUrlTarget.includes('ps5') ||
-        fullUrlTarget.includes('ps4') ||
-        fullUrlTarget.includes('xbox')
-      ) {
-        setCurrentPage('consoles');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-      if (fullUrlTarget.includes('controller') || fullUrlTarget.includes('dualsense')) {
-        setCurrentPage('controllers');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-      if (fullUrlTarget.includes('game') || fullUrlTarget.includes('disc')) {
-        setCurrentPage('preowned_games');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-      if (fullUrlTarget.includes('accessor')) {
-        setCurrentPage('accessories');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
+      if (route.page === 'home') {
+        document.title = siteConfig.brandName
+          ? `${siteConfig.brandName} - Consoles, Controllers & Pre-Owned Games`
+          : 'DJN Tech - Consoles, Controllers & Pre-Owned Games';
       }
     };
 
@@ -646,7 +777,7 @@ export default function App() {
       window.removeEventListener('hashchange', handleUrlRoute);
       window.removeEventListener('popstate', handleUrlRoute);
     };
-  }, [isAdminUser, authUser]);
+  }, [isAdminUser, authUser, products, siteConfig.brandName]);
 
   // Route security guard: bounce non-admins out of admin page
   useEffect(() => {
@@ -667,24 +798,6 @@ export default function App() {
     localStorage.removeItem('djn_admin_authenticated');
     setCurrentPage('home');
     showToast('Admin signed out');
-  };
-
-  const handleNavigateCategory = (cat: Category | 'all', plat: Platform | 'all' = 'all') => {
-    setSelectedProduct(null);
-    setCurrentPage(cat);
-    setActiveCategory(cat);
-    setSelectedPlatform(plat);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleSelectProduct = (product: Product) => {
-    if (isTestProduct(product) && !isAdminUser) {
-      showToast('This item is a private test product accessible only to store administrators.');
-      return;
-    }
-    setSelectedProduct(product);
-    setCurrentPage('product-detail');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Add to Cart
@@ -1141,12 +1254,13 @@ export default function App() {
               isWishlisted={displayWishlist.some((w) => w.id === selectedProduct.id)}
               isInCart={displayCart.some((c) => c.product.id === selectedProduct.id)}
               onBack={() => {
-                if (activeCategory !== 'all') {
-                  setCurrentPage(activeCategory);
+                if (window.history.length > 2) {
+                  window.history.back();
+                } else if (activeCategory !== 'all') {
+                  handleNavigateCategory(activeCategory);
                 } else {
-                  setCurrentPage('home');
+                  handleNavigateHome();
                 }
-                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               onNavigateCategory={handleNavigateCategory}
               onNavigateHome={handleNavigateHome}
