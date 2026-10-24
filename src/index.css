@@ -43,6 +43,11 @@
   }
 }
 
+/* Custom Typography Utilities */
+.font-sofia-condensed {
+  font-family: 'Sofia Sans Condensed', '__Sofia_Sans_Condensed_bb411f', '__Sofia_Sans_Condensed_Fallback_bb411f', sans-serif;
+}
+
 /* Custom scrollbars for clean UI */
 ::-webkit-scrollbar {
   width: 6px;

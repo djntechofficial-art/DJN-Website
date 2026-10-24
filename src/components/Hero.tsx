@@ -105,8 +105,8 @@ export const Hero: React.FC<HeroProps> = ({
           {/* Left Column: Editorial Content (Moved Upwards) */}
           <div className="lg:col-span-6 flex flex-col justify-start z-10 -mt-1 sm:-mt-3 lg:-mt-6">
             
-            {/* Headline - Bigger & Higher Up */}
-            <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-[76px] font-extrabold text-[#111827] dark:text-white tracking-tight leading-[1.08] sm:leading-[1.04] lg:leading-[1.01]">
+            {/* Headline - Sofia Sans Condensed */}
+            <h1 className="font-sofia-condensed text-[38px] sm:text-[50px] md:text-[60px] lg:text-[68px] xl:text-[76px] font-bold text-black dark:text-white tracking-[-0.95px] leading-[1.08] sm:leading-[1.04] lg:leading-[1.02]">
               <span className="sm:hidden">PlayStation 5 & Tested Games</span>
               <span className="hidden sm:inline">PlayStation 5, controllers & certified games.</span>
             </h1>
