@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Product, Order, SiteConfig, UserRole, UserRoleRecord } from '../types/store';
 import { PRODUCTS } from '../data/products';
 import { DEFAULT_SITE_CONFIG } from '../data/siteConfig';
+import type { GoogleReview } from '../data/googleReviews';
 
 // Environment variables or fallback credentials
 const supabaseUrl =
@@ -868,4 +869,91 @@ export async function assignUserRoleByEmail(
     return { success: false, message: err?.message || 'Database error occurred.' };
   }
 }
+
+/**
+ * Maps database row to GoogleReview
+ */
+export function mapRowToGoogleReview(row: any): GoogleReview {
+  return {
+    id: row.id,
+    authorName: row.author_name || 'Customer',
+    authorLocation: row.author_location || 'Mumbai',
+    authorAvatarColor: row.author_avatar_color || '#4285F4',
+    authorAvatarUrl: row.author_avatar_url || undefined,
+    isLocalGuide: Boolean(row.is_local_guide),
+    guideReviewsCount: Number(row.guide_reviews_count) || undefined,
+    rating: Number(row.rating) || 5,
+    relativeTime: row.relative_time || 'Recent',
+    text: row.text || '',
+    categoryTag: row.category_tag || 'Verified Customer',
+    helpfulCount: Number(row.helpful_count) || 0,
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    ownerReply: row.owner_reply || undefined,
+  };
+}
+
+/**
+ * Fetch Google Reviews stored in Supabase
+ */
+export async function fetchGoogleReviewsFromDB(): Promise<GoogleReview[]> {
+  try {
+    const { data, error } = await supabase
+      .from('google_reviews')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      return [];
+    }
+
+    const reviews = data.map(mapRowToGoogleReview);
+    // Priority: Customer photo reviews always appear at the top
+    return reviews.sort((a, b) => {
+      const aHas = a.photos && a.photos.length > 0 ? 1 : 0;
+      const bHas = b.photos && b.photos.length > 0 ? 1 : 0;
+      return bHas - aHas;
+    });
+  } catch (err) {
+    console.warn('[Supabase] fetchGoogleReviewsFromDB fallback:', err);
+    return [];
+  }
+}
+
+/**
+ * Insert or update a Google Review in Supabase
+ */
+export async function upsertGoogleReviewToDB(review: GoogleReview): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('google_reviews').upsert(
+      {
+        id: review.id,
+        author_name: review.authorName,
+        author_location: review.authorLocation,
+        author_avatar_color: review.authorAvatarColor,
+        author_avatar_url: review.authorAvatarUrl || null,
+        rating: review.rating,
+        relative_time: review.relativeTime,
+        text: review.text,
+        category_tag: review.categoryTag,
+        helpful_count: review.helpfulCount,
+        photos: review.photos || [],
+        owner_reply: review.ownerReply || null,
+        is_local_guide: review.isLocalGuide || false,
+        guide_reviews_count: review.guideReviewsCount || 0,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
+    if (error) {
+      console.error('[Supabase] upsertGoogleReviewToDB error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase] upsertGoogleReviewToDB exception:', err);
+    return false;
+  }
+}
+
 
